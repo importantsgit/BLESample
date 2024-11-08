@@ -248,7 +248,7 @@ extension BLECentralViewModel: CBPeripheralDelegate {
         if stringFromData == "EOM" {
             Task { @MainActor in
                 chats.append(.init(
-                    author: characteristic.uuid.uuidString,
+                    myChat: false,
                     content: updateText
                 ))
                 updateText = ""
@@ -260,13 +260,13 @@ extension BLECentralViewModel: CBPeripheralDelegate {
     }
 }
 
-struct Chat: Identifiable {
+struct Chat: Identifiable, Equatable {
     let id: UUID = UUID()
-    let author: String
+    let myChat: Bool
     let content: String
     
-    init(author: String, content: String) {
-        self.author = author
+    init(myChat: Bool, content: String) {
+        self.myChat = myChat
         self.content = content
     }
 }
