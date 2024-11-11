@@ -13,12 +13,15 @@ class BLECentralViewModel: NSObject, ChatViewModel {
     @Published var isScanning = false
     @Published var isConnected = false
     @Published var peripheralRSSIs: [UUID: NSNumber] = [:]
-    
+    var textPublisher: Published<String>.Publisher { $text }
     @Published var chats: [Chat] = []
+    @Published var userName = ""
     var updateText = ""
     var connectedPeripheral: CBPeripheral? = nil
     
     var transferCharacteristic: CBCharacteristic?
+    var nameCharacteristic: CBCharacteristic?
+    @Published var name: String = "" // FIXME: 해당 name UI binding
     @Published var text: String = ""
     @Published var isSending = false
     private var isEOMPending = false
@@ -73,6 +76,7 @@ class BLECentralViewModel: NSObject, ChatViewModel {
               case .connected = discoveredPeripheral.state
         else { return }
         manager.cancelPeripheralConnection(discoveredPeripheral)
+        chats.removeAll()
         isConnected = false
     }
     
@@ -178,9 +182,12 @@ extension BLECentralViewModel: CBCentralManagerDelegate {
         Task {
             await MainActor.run {
                 peripheralRSSIs[peripheral.identifier] = RSSI
-                
                 // 이미 발견된 기기가 아닐 경우에만 추가
-                if !discoveredPeripherals.contains(where: { $0.identifier == peripheral.identifier }) {
+                if let index = discoveredPeripherals.firstIndex(where: { $0.identifier == peripheral.identifier }) {
+                    discoveredPeripherals[index] = peripheral
+                    objectWillChange.send()
+                }
+                else {
                     discoveredPeripherals.append(peripheral)
                     objectWillChange.send()
                 }
@@ -231,7 +238,7 @@ extension BLECentralViewModel: CBPeripheralDelegate {
         
         for service in services {
             print("Discovered service: \(service.uuid)")
-            peripheral.discoverCharacteristics([BLEUUID.characteristicUUID], for: service)
+            peripheral.discoverCharacteristics([BLEUUID.transferCharacteristicUUID, BLEUUID.nameCharacteristicUUID], for: service)
         }
     }
     
@@ -249,8 +256,14 @@ extension BLECentralViewModel: CBPeripheralDelegate {
             print("Found characteristic: \(characteristic.uuid)")
             
             if characteristic.properties.contains(.notify) {
-                transferCharacteristic = characteristic
-                peripheral.setNotifyValue(true, for: characteristic)
+                if characteristic.uuid == BLEUUID.transferCharacteristicUUID {
+                    transferCharacteristic = characteristic
+                    peripheral.setNotifyValue(true, for: characteristic)
+                }
+                else if characteristic.uuid == BLEUUID.nameCharacteristicUUID {
+                    nameCharacteristic = characteristic
+                    peripheral.setNotifyValue(true, for: characteristic)
+                }
             }
         }
     }
@@ -269,10 +282,21 @@ extension BLECentralViewModel: CBPeripheralDelegate {
         
         print("Characteristic: \(characteristic.uuid), Value: \(stringFromData)")
         
+        if characteristic.uuid == BLEUUID.nameCharacteristicUUID,
+           let nameCharacteristic {
+            Task { @MainActor in
+                print("Peripheral에서 받은 UserName: \(stringFromData)")
+                userName = stringFromData
+                let nameData = name.data(using: .utf8)!
+                connectedPeripheral?.writeValue(nameData, for: nameCharacteristic, type: .withResponse)
+            }
+            return
+        }
         if stringFromData == "EOM" {
             Task { @MainActor in
                 chats.append(.init(
                     myChat: false,
+                    userName: userName,
                     content: updateText
                 ))
                 updateText = ""
@@ -286,10 +310,6 @@ extension BLECentralViewModel: CBPeripheralDelegate {
         }
     }
     
-    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor descriptor: CBDescriptor, error: (any Error)?) {
-        print("??")
-    }
-    
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: (any Error)?) {
         if let error = error {
             print("Failed to send Data, waiting for ready signal \(error)")
@@ -299,7 +319,11 @@ extension BLECentralViewModel: CBPeripheralDelegate {
             if isEOMPending {
                 print("successs send Data EOMPending")
                 Task { @MainActor in
-                    chats.append(.init(myChat: true, content: text))
+                    chats.append(.init(
+                        myChat: true,
+                        content: text
+                    )
+                    )
                 }
                 resetValue()
             }
@@ -327,10 +351,12 @@ extension BLECentralViewModel: CBPeripheralDelegate {
 struct Chat: Identifiable, Equatable {
     let id: UUID = UUID()
     let myChat: Bool
+    let userName: String?
     let content: String
     
-    init(myChat: Bool, content: String) {
+    init(myChat: Bool, userName: String? = nil, content: String) {
         self.myChat = myChat
+        self.userName = userName
         self.content = content
     }
 }

@@ -9,6 +9,8 @@ import Foundation
 
 protocol ChatViewModel: AnyObject, ObservableObject {
     var text: String { get set }
+    var name: String { get set }
+    var textPublisher: Published<String>.Publisher { get }
     var chats: [Chat] { get set }
     var isConnected: Bool { get set }
     

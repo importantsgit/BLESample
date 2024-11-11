@@ -19,7 +19,7 @@ struct PeripheralView: View {
     @EnvironmentObject var navigationModel: NavigationModel
     
     var body: some View {
-        VStack {
+        VStack(alignment: .center) {
             displayNavigationBar {
                 Text("PeripheralView")
             } leftView: {
@@ -61,7 +61,13 @@ struct PeripheralView: View {
             }
             else {
                 Spacer()
-                Text("광고를 시작해주세요.")
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Central에 알릴 Name을 입력 후, 광고를 진행해주세요.")
+                        .font(.subheadline)
+                    TextField("Name 입력", text: $viewModel.name)
+                        .textFieldStyle(.roundedBorder)
+                }
+                .padding()
                 Spacer()
             }
         }

@@ -108,6 +108,10 @@ struct ChatView<ViewModel: ChatViewModel>: View {
         }
         .ignoresSafeArea(.container, edges: .bottom)
         .background(Color.blue.edgesIgnoringSafeArea(.top))
+        .onReceive(viewModel.textPublisher) { _ in
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.impactOccurred()
+        }
     }
 }
 
@@ -131,28 +135,33 @@ struct ChatBubble: View {
                 }
             }
             else {
+                let userName = chat.userName != nil ?
+                (chat.userName!.isEmpty ? "B" : chat.userName!) :
+                "B"
                 ZStack(alignment: .center) {
                     Circle()
                         .fill(Color.blue)
                         .frame(width: 40, height: 40)
                     
-                    Text("B")
+                    Text(userName.prefix(1))
                         .foregroundColor(.white)
                         .font(.system(size: 16, weight: .bold))
                 }
                 
-                VStack(spacing: 0) {
+                VStack {
                     Spacer()
-                        .frame(height: 20)
-                    Text(chat.content)
-                        .padding(.all)
-                        .foregroundColor(.black)
-                        .font(.system(size: 16, weight: .medium))
-                        .background(Color.blue.opacity(0.2)) // TODO: 배경색 맞추기
-                        .clipShape(BubbleArrow(myMsg: chat.myChat))
+                        .frame(height: 4)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(userName)
+                            .font(.system(size: 14, weight: .light))
+                        Text(chat.content)
+                            .padding(.all)
+                            .foregroundColor(.black)
+                            .font(.system(size: 16, weight: .medium))
+                            .background(Color.blue.opacity(0.2)) // TODO: 배경색 맞추기
+                            .clipShape(BubbleArrow(myMsg: chat.myChat))
+                    }
                 }
-
-                
                 Spacer(minLength: 25)
             }
         }
@@ -183,5 +192,6 @@ struct RoundedShape : Shape {
 @available(iOS 17.0, *)
 #Preview {
     ChatBubble(chat: .init(myChat: true, content: "Hello"))
-    ChatBubble(chat: .init(myChat: false, content: "Hello"))
+    ChatBubble(chat: .init(myChat: false, userName: "Jaehun", content: "Hello"))
+    ChatBubble(chat: .init(myChat: false, userName: "재훈", content: "Hello"))
 }

@@ -33,43 +33,56 @@ struct CentralView: View {
                 }
             }
             
-            if viewModel.isScanning {
+            if viewModel.isConnected {
+                Text("연결되었습니다.")
+                Spacer()
+            }
+            else if viewModel.isScanning {
                 ProgressView()
                     .progressViewStyle(.circular)
                 Text("스캔 중...")
-            }
-            
-            if viewModel.isConnected {
-                Text("연결되었습니다.")
-            }
-            else {
-                List(Array(viewModel.discoveredPeripherals.enumerated()), id: \.1.identifier) { index, peripheral in
+                List(viewModel.discoveredPeripherals, id: \.identifier) { peripheral in
                     HStack {
                         Button {
                             viewModel.connect(to: peripheral)
                         } label: {
                             VStack(alignment: .leading) {
-                                Text(peripheral.name ?? "Unknown Device")
-                                    .font(.headline)
-                                Text(peripheral.identifier.uuidString)
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                            }
-                            Spacer()
-                            if let rssi = viewModel.peripheralRSSIs[peripheral.identifier] {
-                                Text("\(rssi) dBm")
+                                VStack(alignment: .leading) {
+                                    Text(peripheral.name ?? "Unknown Device")
+                                        .font(.headline)
+                                    Text(peripheral.identifier.uuidString)
+                                        .font(.caption)
+                                        .foregroundColor(.gray)
+                                }
+                                Spacer()
+                                if let rssi = viewModel.peripheralRSSIs[peripheral.identifier] {
+                                    HStack {
+                                        Text("\(rssi) dBm")
+                                        Spacer()
+                                    }
+                                }
                             }
                         }
                     }
                 }
             }
+            else {
+                Spacer()
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Peripheral에 알릴 Name을 입력 후, 스캔을 진행해주세요.")
+                        .font(.subheadline)
+                    TextField("Name 입력", text: $viewModel.name)
+                        .textFieldStyle(.roundedBorder)
+                }
+                .padding()
+                Spacer()
+            }
+        }
+        .onAppear {
+            viewModel.onAppear()
         }
         .fullScreenCover(isPresented: $viewModel.isConnected) {
             ChatView(viewModel: viewModel)
-        }
-        .navigationTitle("Central")
-        .onAppear {
-            viewModel.onAppear()
         }
     }
 }

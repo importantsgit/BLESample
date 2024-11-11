@@ -14,9 +14,12 @@ class PeripheralViewModel: NSObject, ChatViewModel {
     @Published var text = ""
     @Published var connectedCentral: CBCentral? = nil
     @Published var chats: [Chat] = []
+    @Published var name: String = ""
+    var userName: String = ""
     var updateText = ""
-    
     var transferCharacteristic: CBMutableCharacteristic?
+    var nameCharacteristic: CBMutableCharacteristic?
+    var textPublisher: Published<String>.Publisher { $text }
     
     @Published var isSending = false
     private var isEOMPending = false
@@ -42,9 +45,16 @@ class PeripheralViewModel: NSObject, ChatViewModel {
     
     private func startAdvertising() {
         guard manager.state == .poweredOn else { return }
-    
+            
         let transferCharacteristic = CBMutableCharacteristic(
-            type: BLEUUID.characteristicUUID,
+            type: BLEUUID.transferCharacteristicUUID,
+            properties: [.notify, .write, .read],
+            value: nil,
+            permissions: [.readable, .writeable]
+        )
+        
+        let nameCharacteristic = CBMutableCharacteristic(
+            type: BLEUUID.nameCharacteristicUUID,
             properties: [.notify, .write, .read],
             value: nil,
             permissions: [.readable, .writeable]
@@ -52,16 +62,18 @@ class PeripheralViewModel: NSObject, ChatViewModel {
         
         let transferService = CBMutableService(type: BLEUUID.serviceUUID, primary: true)
         
-        transferService.characteristics = [transferCharacteristic]
+        transferService.characteristics = [transferCharacteristic, nameCharacteristic]
         
         manager.add(transferService)
         
         self.transferCharacteristic = transferCharacteristic
+        self.nameCharacteristic = nameCharacteristic
         
         manager.startAdvertising([
-            CBAdvertisementDataLocalNameKey: "블루투스 통신",
+            CBAdvertisementDataLocalNameKey: name.isEmpty ? "채팅을 원해요" : name,
             CBAdvertisementDataServiceUUIDsKey: [BLEUUID.serviceUUID]
         ])
+        
         isAdvertising = true
     }
     
@@ -190,14 +202,21 @@ extension PeripheralViewModel: CBPeripheralManagerDelegate {
     // 특성을 구독했을 때
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
         print("특성 구독")
-        Task { @MainActor in
-            manager.stopAdvertising()
-            isAdvertising = false
-            isConnected = true
-            
-            if connectedCentral == nil {
-                connectedCentral = central
+        if characteristic.uuid == BLEUUID.transferCharacteristicUUID {
+            Task { @MainActor in
+                manager.stopAdvertising()
+                isAdvertising = false
+                isConnected = true
+                
+                if connectedCentral == nil {
+                    connectedCentral = central
+                }
             }
+        }
+        else if characteristic.uuid == BLEUUID.nameCharacteristicUUID,
+                let nameCharacteristic {
+            let name = name.data(using: .utf8)!
+            manager.updateValue(name, for: nameCharacteristic, onSubscribedCentrals: nil)
         }
     }
     
@@ -207,6 +226,7 @@ extension PeripheralViewModel: CBPeripheralManagerDelegate {
         Task { @MainActor in
             connectedCentral = nil
             isConnected = false
+            chats.removeAll()
             resetValue()
         }
     }
@@ -223,12 +243,20 @@ extension PeripheralViewModel: CBPeripheralManagerDelegate {
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         print("데이터 didReceiveWrite")
         for request in requests {
+
             if let value = request.value,
                let stringFromData = String(data: value, encoding: .utf8) {
+                if request.characteristic.uuid == BLEUUID.nameCharacteristicUUID {
+                    userName = stringFromData
+                    print("Central로부터 받은 UserName: \(userName)")
+                    manager.respond(to: request, withResult: .success)
+                    return
+                }
                 if stringFromData == "EOM" {
                     Task { @MainActor in
                         chats.append(.init(
                             myChat: false,
+                            userName: userName,
                             content: updateText
                         ))
                         updateText = ""
