@@ -69,7 +69,7 @@ struct PeripheralView: View {
             viewModel.onAppear()
         }
         .fullScreenCover(isPresented: $viewModel.isConnected) {
-            DetailView(viewModel: viewModel)
+            ChatView(viewModel: viewModel)
         }
     }
 }

@@ -1,5 +1,5 @@
 //
-//  DetailView.swift
+//  ChatView.swift
 //  BLECentral
 //
 //  Created by 이재훈 on 11/7/24.
@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-struct DetailView<ViewModel: ChatViewModel>: View {
+struct ChatView<ViewModel: ChatViewModel>: View {
     @ObservedObject var viewModel: ViewModel
     @EnvironmentObject var navigationModel: NavigationModel
     
@@ -44,7 +44,7 @@ struct DetailView<ViewModel: ChatViewModel>: View {
                 ScrollView(.vertical, showsIndicators: false) {
                     
                     ScrollViewReader { reader in
-                        LazyVStack(spacing: 20) {
+                        LazyVStack(spacing: 16) {
                             if #available(iOS 17.0, *) {
                                 ForEach(viewModel.chats) { chat in
                                     ChatBubble(chat: chat)
@@ -119,37 +119,39 @@ struct ChatBubble: View {
             if chat.myChat {
                 Spacer(minLength: 25)
                 
-                Text(chat.content)
-                    .padding(.all)
-                    .background(Color.black.opacity(0.06))
-                    .clipShape(BubbleArrow(myMsg: chat.myChat))
-                
-                ZStack(alignment: .center) {
-                    Circle()
-                        .fill(Color.red)
-                        .frame(width: 30, height: 30)
-                    
-                    Text("B")
-                        .foregroundColor(.white)
-                        .font(.system(size: 16, weight: .bold))
+                VStack(spacing: 0) {
+                    Spacer()
+                        .frame(height: 20)
+                    Text(chat.content)
+                        .padding(.all)
+                        .foregroundStyle(.white)
+                        .font(.system(size: 16, weight: .medium))
+                        .background(Color.blue.opacity(0.9))
+                        .clipShape(BubbleArrow(myMsg: chat.myChat))
                 }
             }
             else {
                 ZStack(alignment: .center) {
                     Circle()
-                        .fill(Color.red)
-                        .frame(width: 30, height: 30)
+                        .fill(Color.blue)
+                        .frame(width: 40, height: 40)
                     
-                    Text("Me")
+                    Text("B")
                         .foregroundColor(.white)
                         .font(.system(size: 16, weight: .bold))
                 }
                 
-                Text(chat.content)
-                    .padding(.all)
-                    .foregroundColor(.white)
-                    .background(Color.blue) // TODO: 배경색 맞추기
-                    .clipShape(BubbleArrow(myMsg: chat.myChat))
+                VStack(spacing: 0) {
+                    Spacer()
+                        .frame(height: 20)
+                    Text(chat.content)
+                        .padding(.all)
+                        .foregroundColor(.black)
+                        .font(.system(size: 16, weight: .medium))
+                        .background(Color.blue.opacity(0.2)) // TODO: 배경색 맞추기
+                        .clipShape(BubbleArrow(myMsg: chat.myChat))
+                }
+
                 
                 Spacer(minLength: 25)
             }
@@ -162,7 +164,7 @@ struct BubbleArrow : Shape {
     var myMsg : Bool
     func path(in rect: CGRect) -> Path {
         
-        let path = UIBezierPath(roundedRect: rect, byRoundingCorners: myMsg ?  [.topLeft,.bottomLeft,.bottomRight] : [.topRight,.bottomLeft,.bottomRight], cornerRadii: CGSize(width: 10, height: 10))
+        let path = UIBezierPath(roundedRect: rect, byRoundingCorners: myMsg ?  [.topLeft,.bottomLeft,.bottomRight] : [.topRight,.bottomLeft,.bottomRight], cornerRadii: CGSize(width: 16, height: 16))
         
         return Path(path.cgPath)
     }
@@ -176,4 +178,10 @@ struct RoundedShape : Shape {
         
         return Path(path.cgPath)
     }
+}
+
+@available(iOS 17.0, *)
+#Preview {
+    ChatBubble(chat: .init(myChat: true, content: "Hello"))
+    ChatBubble(chat: .init(myChat: false, content: "Hello"))
 }

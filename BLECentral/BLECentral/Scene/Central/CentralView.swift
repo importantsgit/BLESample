@@ -65,7 +65,7 @@ struct CentralView: View {
             }
         }
         .fullScreenCover(isPresented: $viewModel.isConnected) {
-            DetailView(viewModel: viewModel)
+            ChatView(viewModel: viewModel)
         }
         .navigationTitle("Central")
         .onAppear {
