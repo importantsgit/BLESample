@@ -1,74 +1,41 @@
-import SwiftUI
-import CoreBluetooth
-struct CentralView: View {
-    @StateObject private var viewModel = BLECentralViewModel()
-    
-    var body: some View {
-        VStack {
-            if viewModel.isScanning {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                Text("스캔 중...")
-            }
-            
-            if viewModel.isConnected {
-                DetailView(viewModel: viewModel)
-            }
-            else {
-                List(Array(viewModel.discoveredPeripherals.enumerated()), id: \.1.identifier) { index, peripheral in
-                    HStack {
-                        Button {
-                            viewModel.connect(to: peripheral)
-                        } label: {
-                            VStack(alignment: .leading) {
-                                Text(peripheral.name ?? "Unknown Device")
-                                    .font(.headline)
-                                Text(peripheral.identifier.uuidString)
-                                    .font(.caption)
-                                    .foregroundColor(.gray)
-                            }
-                            Spacer()
-                            if let rssi = viewModel.peripheralRSSIs[peripheral.identifier] {
-                                Text("\(rssi) dBm")
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        .navigationTitle("Central")
-        .toolbar {
-            if viewModel.isConnected {
-                Button("연결 해제") {
-                    viewModel.cleanup()
-                }
-            }
-            else {
-                Button(viewModel.isScanning ? "스캔 중지" : "스캔 시작") {
-                    viewModel.toggleScan()
-                }
-            }
-        }
-    }
-}
+//
+//  BLECentralViewModel.swift
+//  BLECentral
+//
+//  Created by 이재훈 on 11/11/24.
+//
 
-class BLECentralViewModel: NSObject, ObservableObject {
+import CoreBluetooth
+import Foundation
+
+class BLECentralViewModel: NSObject, ChatViewModel {
     @Published var discoveredPeripherals: [CBPeripheral] = []
     @Published var isScanning = false
     @Published var isConnected = false
+    @Published var peripheralRSSIs: [UUID: NSNumber] = [:]
+    
     @Published var chats: [Chat] = []
     var updateText = ""
-    private var connectedPeripheral: CBPeripheral? = nil
+    var connectedPeripheral: CBPeripheral? = nil
     
-    var peripheralRSSIs: [UUID: NSNumber] = [:]
-    private lazy var manager: CBCentralManager = {
+    var transferCharacteristic: CBCharacteristic?
+    @Published var text: String = ""
+    @Published var isSending = false
+    private var isEOMPending = false
+    private var dataToSend: Data?
+    private var sendDataIndex = 0
+    
+    
+    private var manager: CBCentralManager!
+    
+    func onAppear() {
         let options: [String: Any] = [
             CBCentralManagerOptionShowPowerAlertKey: true
             // true인 경우, Manager가 scanForPeripherals 할 때 블투투스가 꺼진 상태라면 Alert을 띄움
             // 만약 커스텀 Alert을 띄우고 싶다면 해당 key <= false
         ]
-        return CBCentralManager(delegate: self, queue: .global(), options: options)
-    }()
+        manager = CBCentralManager(delegate: self, queue: .global(), options: options)
+    }
     
     func toggleScan() {
         if isScanning {
@@ -105,8 +72,64 @@ class BLECentralViewModel: NSObject, ObservableObject {
         guard let discoveredPeripheral = connectedPeripheral,
               case .connected = discoveredPeripheral.state
         else { return }
-        
         manager.cancelPeripheralConnection(discoveredPeripheral)
+        isConnected = false
+    }
+    
+    func sendButtonTapped() {
+        guard transferCharacteristic != nil else { return }
+        let data = text.data(using: .utf8)!
+        dataToSend = data
+        sendDataIndex = 0
+        isSending = true
+        isEOMPending = false
+        sendNextChunk()
+    }
+    
+    private func sendNextChunk() {
+        guard let transferCharacteristic = transferCharacteristic,
+              let dataToSend,
+              isSending
+        else {
+            resetValue()
+            return
+        }
+        
+        if isEOMPending {
+            sendEOM()
+            return
+        }
+        
+        var amountToSend = dataToSend.count - sendDataIndex
+        
+        if let mtu = connectedPeripheral?.maximumWriteValueLength(for: .withResponse) {
+            amountToSend = min(amountToSend, mtu)
+        }
+        
+        let chunk = dataToSend.subdata(in: sendDataIndex..<(sendDataIndex + amountToSend))
+        connectedPeripheral?.writeValue(chunk, for: transferCharacteristic, type: .withResponse)
+        
+        sendDataIndex += amountToSend
+    }
+    
+    private func sendEOM() {
+        guard let transferCharacteristic = transferCharacteristic
+        else { return }
+        
+        let eomData = "EOM".data(using: .utf8)!
+        
+        connectedPeripheral?.writeValue(eomData, for: transferCharacteristic, type: .withResponse)
+    }
+    
+    func resetValue() {
+        print("resetValue")
+        Task { @MainActor in
+            isSending = false
+            isEOMPending = false
+            dataToSend = nil
+            text = ""
+            sendDataIndex = 0
+        }
     }
 }
 
@@ -226,6 +249,7 @@ extension BLECentralViewModel: CBPeripheralDelegate {
             print("Found characteristic: \(characteristic.uuid)")
             
             if characteristic.properties.contains(.notify) {
+                transferCharacteristic = characteristic
                 peripheral.setNotifyValue(true, for: characteristic)
             }
         }
@@ -254,8 +278,48 @@ extension BLECentralViewModel: CBPeripheralDelegate {
                 updateText = ""
             }
         }
+        else if stringFromData == "CLEANUP" {
+            cleanup()
+        }
         else {
             updateText += stringFromData
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor descriptor: CBDescriptor, error: (any Error)?) {
+        print("??")
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: (any Error)?) {
+        if let error = error {
+            print("Failed to send Data, waiting for ready signal \(error)")
+            resetValue()
+        }
+        else {
+            if isEOMPending {
+                print("successs send Data EOMPending")
+                Task { @MainActor in
+                    chats.append(.init(myChat: true, content: text))
+                }
+                resetValue()
+            }
+            else if let dataToSend,
+                    sendDataIndex >= dataToSend.count {
+                print("successs send Data sendEOM")
+                isEOMPending = true
+                sendEOM()
+            }
+            else {
+                print("successs send Data")
+                sendNextChunk()
+            }
+        }
+    }
+    
+    func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
+        if invalidatedServices.isEmpty {
+            print("연결된 Service가 없습니다.")
+            cleanup()
         }
     }
 }

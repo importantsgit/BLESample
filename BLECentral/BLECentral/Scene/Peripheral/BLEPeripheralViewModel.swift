@@ -1,45 +1,21 @@
 //
-//  PeripheralView.swift
+//  BLEPeripheralViewModel.swift
 //  BLECentral
 //
-//  Created by 이재훈 on 11/7/24.
-//
-//
-//  PeripheralView.swift
-//  BLECentral
-//
-//  Created by 이재훈 on 11/7/24.
+//  Created by 이재훈 on 11/11/24.
 //
 
 import CoreBluetooth
-import SwiftUI
+import Foundation
 
-struct PeripheralView: View {
-    @StateObject var viewModel : PeripheralViewModel = .init()
-    var body: some View {
-        TextField("입력해주세요", text: $viewModel.text)
-            .disabled(viewModel.connectedCentral == nil)
-            .navigationTitle("Peripheral")
-            .toolbar {
-                if viewModel.connectedCentral != nil {
-                    Button("데이터 보내기") {
-                        viewModel.sendData()
-                    }
-                    .disabled(viewModel.isSending || viewModel.text.isEmpty)
-                }
-                else {
-                    Button(viewModel.isAdvertising ? "광고 중지" : "광고 시작") {
-                        viewModel.toogleAdvertising()
-                    }
-                }
-            }
-    }
-}
-
-class PeripheralViewModel: NSObject, ObservableObject {
+class PeripheralViewModel: NSObject, ChatViewModel {
     @Published var isAdvertising = false
+    @Published var isConnected: Bool = false
     @Published var text = ""
     @Published var connectedCentral: CBCentral? = nil
+    @Published var chats: [Chat] = []
+    var updateText = ""
+    
     var transferCharacteristic: CBMutableCharacteristic?
     
     @Published var isSending = false
@@ -47,11 +23,12 @@ class PeripheralViewModel: NSObject, ObservableObject {
     private var dataToSend: Data?
     private var sendDataIndex = 0
     
-    private lazy var manager: CBPeripheralManager = {
+    private var manager: CBPeripheralManager!
+    
+    func onAppear() {
         let options: [String: Any] = [:]
-        
-        return CBPeripheralManager(delegate: self, queue: .global(), options: options)
-    }()
+        manager = CBPeripheralManager(delegate: self, queue: .global(), options: options)
+    }
     
     func toogleAdvertising() {
         if isAdvertising {
@@ -68,7 +45,7 @@ class PeripheralViewModel: NSObject, ObservableObject {
     
         let transferCharacteristic = CBMutableCharacteristic(
             type: BLEUUID.characteristicUUID,
-            properties: [.notify, .writeWithoutResponse],
+            properties: [.notify, .write, .read],
             value: nil,
             permissions: [.readable, .writeable]
         )
@@ -88,7 +65,14 @@ class PeripheralViewModel: NSObject, ObservableObject {
         isAdvertising = true
     }
     
-    func sendData() {
+    func cleanup() {
+        connectedCentral = nil
+        
+        manager.removeAllServices()
+        isConnected = false
+    }
+    
+    func sendButtonTapped() {
         guard transferCharacteristic != nil else { return }
         
         let data = text.data(using: .utf8)!
@@ -96,9 +80,7 @@ class PeripheralViewModel: NSObject, ObservableObject {
         sendDataIndex = 0
         isSending = true
         isEOMPending = false
-        text = ""
         sendNextChunk()
-        
     }
     
     private func sendNextChunk() {
@@ -159,6 +141,9 @@ class PeripheralViewModel: NSObject, ObservableObject {
         
         if didSend {
             print("Successfully sent EOM")
+            Task { @MainActor in
+                chats.append(.init(myChat: true, content: text))
+            }
             resetValue()
         } else {
             print("Failed to send EOM, waiting for ready signal")
@@ -172,6 +157,7 @@ class PeripheralViewModel: NSObject, ObservableObject {
             isEOMPending = false
             dataToSend = nil
             sendDataIndex = 0
+            text = ""
         }
     }
 }
@@ -207,6 +193,7 @@ extension PeripheralViewModel: CBPeripheralManagerDelegate {
         Task { @MainActor in
             manager.stopAdvertising()
             isAdvertising = false
+            isConnected = true
             
             if connectedCentral == nil {
                 connectedCentral = central
@@ -219,6 +206,7 @@ extension PeripheralViewModel: CBPeripheralManagerDelegate {
         print("특성 구독 취소")
         Task { @MainActor in
             connectedCentral = nil
+            isConnected = false
             resetValue()
         }
     }
@@ -234,5 +222,26 @@ extension PeripheralViewModel: CBPeripheralManagerDelegate {
     // Central으로부터 특성값에 Write된 데이터를 받았을 때
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
         print("데이터 didReceiveWrite")
+        for request in requests {
+            if let value = request.value,
+               let stringFromData = String(data: value, encoding: .utf8) {
+                if stringFromData == "EOM" {
+                    Task { @MainActor in
+                        chats.append(.init(
+                            myChat: false,
+                            content: updateText
+                        ))
+                        updateText = ""
+                    }
+                }
+                else {
+                    updateText += stringFromData
+                }
+                manager.respond(to: request, withResult: .success)
+            }
+            else {
+                manager.respond(to: request, withResult: .invalidHandle)
+            }
+        }
     }
 }

@@ -7,14 +7,39 @@
 
 import SwiftUI
 
-struct DetailView: View {
-    @ObservedObject var viewModel: BLECentralViewModel
-    @State private var message: String = ""
+struct DetailView<ViewModel: ChatViewModel>: View {
+    @ObservedObject var viewModel: ViewModel
+    @EnvironmentObject var navigationModel: NavigationModel
     
     var body: some View {
         VStack(spacing: 0) {
-            // 네비게이션
-            
+            displayNavigationBar {
+                Text("ChatView")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.white)
+            } leftView: {
+                Button {
+                    viewModel.cleanup()
+                } label: {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Image(systemName: "chevron.backward")
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 24, height: 24)
+                                .tint(.white)
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                }
+                .frame(width: 48)
+            } rightView: {
+                Spacer()
+                    .frame(width: 48)
+            }
+
             VStack(spacing: 10) {
                 ScrollView(.vertical, showsIndicators: false) {
                     
@@ -43,7 +68,7 @@ struct DetailView: View {
                 }
                 HStack(spacing: 15) {
                     HStack(spacing: 15) {
-                        TextField("Message", text: $message)
+                        TextField("Message", text: $viewModel.text)
                         Button{
                         } label: {
                             Image(systemName: "paperclip.circle.fill")
@@ -56,13 +81,11 @@ struct DetailView: View {
                     .background(Color.black.opacity(0.06))
                     .clipShape(Capsule())
                     
-                    if message != "" {
+                    if viewModel.text != "" {
                         Button {
                             withAnimation(.easeIn){
-                                viewModel.chats.append(.init(myChat: true, content: message))
-                                // TODO: - 해당 메세지 입력 시의 처리 -> Peripheral에 던져야 함
+                                viewModel.sendButtonTapped()
                             }
-                            message = ""
                         } label: {
                             Image(systemName: "paperplane.fill")
                                 .font(.system(size: 22))
@@ -77,14 +100,14 @@ struct DetailView: View {
                     }
                 }
                 .padding(.horizontal)
-                .animation(.easeOut, value: message)
+                .animation(.easeOut, value: viewModel.text)
             }
             // FIXME: 해당 window 값 바꾸기
             .padding(.bottom, UIApplication.shared.windows.first?.safeAreaInsets.bottom)
             .background(Color.white.clipShape(RoundedShape()))
         }
         .ignoresSafeArea(.container, edges: .bottom)
-        .background(Color.blue.edgesIgnoringSafeArea(.top)) // TODO: 배경색 맞추기
+        .background(Color.blue.edgesIgnoringSafeArea(.top))
     }
 }
 
@@ -101,14 +124,26 @@ struct ChatBubble: View {
                     .background(Color.black.opacity(0.06))
                     .clipShape(BubbleArrow(myMsg: chat.myChat))
                 
-                Circle()
-                    .fill(Color.red)
-                    .frame(width: 30, height: 30)
+                ZStack(alignment: .center) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 30, height: 30)
+                    
+                    Text("B")
+                        .foregroundColor(.white)
+                        .font(.system(size: 16, weight: .bold))
+                }
             }
             else {
-                Circle()
-                    .fill(Color.blue)
-                    .frame(width: 30, height: 30)
+                ZStack(alignment: .center) {
+                    Circle()
+                        .fill(Color.red)
+                        .frame(width: 30, height: 30)
+                    
+                    Text("Me")
+                        .foregroundColor(.white)
+                        .font(.system(size: 16, weight: .bold))
+                }
                 
                 Text(chat.content)
                     .padding(.all)
