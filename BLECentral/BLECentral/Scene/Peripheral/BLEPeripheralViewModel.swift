@@ -55,7 +55,7 @@ class PeripheralViewModel: NSObject, ChatViewModel {
         
         let nameCharacteristic = CBMutableCharacteristic(
             type: BLEUUID.nameCharacteristicUUID,
-            properties: [.notify, .write, .read],
+            properties: [.notify, .writeWithoutResponse, .read],
             value: nil,
             permissions: [.readable, .writeable]
         )
@@ -199,7 +199,18 @@ extension PeripheralViewModel: CBPeripheralManagerDelegate {
         }
     }
     
-    // 특성을 구독했을 때
+    // readValue (name)
+    func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
+        if request.characteristic.uuid == BLEUUID.nameCharacteristicUUID {
+            request.value = name.data(using: .utf8)
+            manager.respond(to: request, withResult: .success)
+        }
+        else {
+            manager.respond(to: request, withResult: .invalidHandle)
+        }
+    }
+    
+    // 특성을 구독했을 때 updateValue
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
         print("특성 구독")
         if characteristic.uuid == BLEUUID.transferCharacteristicUUID {
@@ -213,11 +224,11 @@ extension PeripheralViewModel: CBPeripheralManagerDelegate {
                 }
             }
         }
-        else if characteristic.uuid == BLEUUID.nameCharacteristicUUID,
-                let nameCharacteristic {
-            let name = name.data(using: .utf8)!
-            manager.updateValue(name, for: nameCharacteristic, onSubscribedCentrals: nil)
-        }
+//        else if characteristic.uuid == BLEUUID.nameCharacteristicUUID,
+//                let nameCharacteristic {
+//            let name = name.data(using: .utf8)!
+//            manager.updateValue(name, for: nameCharacteristic, onSubscribedCentrals: nil)
+//        }
     }
     
     // 특성을 구독 취소했을 때

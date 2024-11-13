@@ -262,7 +262,7 @@ extension BLECentralViewModel: CBPeripheralDelegate {
                 }
                 else if characteristic.uuid == BLEUUID.nameCharacteristicUUID {
                     nameCharacteristic = characteristic
-                    peripheral.setNotifyValue(true, for: characteristic)
+                    peripheral.readValue(for: characteristic)
                 }
             }
         }
@@ -288,7 +288,7 @@ extension BLECentralViewModel: CBPeripheralDelegate {
                 print("Peripheral에서 받은 UserName: \(stringFromData)")
                 userName = stringFromData
                 let nameData = name.data(using: .utf8)!
-                connectedPeripheral?.writeValue(nameData, for: nameCharacteristic, type: .withResponse)
+                connectedPeripheral?.writeValue(nameData, for: nameCharacteristic, type: .withoutResponse)
             }
             return
         }
