@@ -76,8 +76,11 @@ class BLECentralViewModel: NSObject, ChatViewModel {
               case .connected = discoveredPeripheral.state
         else { return }
         manager.cancelPeripheralConnection(discoveredPeripheral)
-        chats.removeAll()
-        isConnected = false
+        Task { @MainActor in
+            chats.removeAll()
+            isConnected = false
+        }
+
     }
     
     func sendButtonTapped() {
