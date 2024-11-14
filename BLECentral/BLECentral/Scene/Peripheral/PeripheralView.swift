@@ -54,7 +54,7 @@ struct PeripheralView: View {
                 .font(.headline)
                 Spacer()
             }
-            else if viewModel.connectedCentral != nil {
+            else if viewModel.isConnected {
                 Spacer()
                 Text("연결할 Central을 찾았습니다.")
                 Spacer()

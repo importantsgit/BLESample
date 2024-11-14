@@ -9,24 +9,49 @@ import CoreBluetooth
 import Foundation
 
 class PeripheralViewModel: NSObject, ChatViewModel {
-    @Published var isAdvertising = false
-    @Published var isConnected: Bool = false
-    @Published var text = ""
-    @Published var connectedCentral: CBCentral? = nil
-    @Published var chats: [Chat] = []
+    /**
+     특성 정보
+     
+     - CBCharacteristic은 remote peripheral의 Service 특성을 나타냄 (받는 쪽에서 사용할 때 사용)
+     - CBMutableCharacteristic은 peripheral의 특성을 정의할 때 사용
+     - 따라서 Central과 Peripheral가 사용하는 객체가 다름
+    */
+    struct Characteristics {
+        var transferCharacteristic: CBMutableCharacteristic?
+        var nameCharacteristic: CBMutableCharacteristic?
+        
+        init(
+            transferCharacteristic: CBMutableCharacteristic? = nil,
+            nameCharacteristic: CBMutableCharacteristic? = nil
+        ) {
+            self.transferCharacteristic = transferCharacteristic
+            self.nameCharacteristic = nameCharacteristic
+        }
+    }
+    
+    // 주변 장치에서 사용하는 manager
+    private var manager: CBPeripheralManager!
+    
     @Published var name: String = ""
-    var userName: String = ""
-    var updateText = ""
-    var transferCharacteristic: CBMutableCharacteristic?
-    var nameCharacteristic: CBMutableCharacteristic?
+    
+    @Published var isAdvertising = false
+    
+    private var connectedCentral: CBCentral? = nil
+    private var characteristics: Characteristics = .init()
+    @Published var isConnected: Bool = false
+    
     var textPublisher: Published<String>.Publisher { $text }
+    @Published var text = ""
+    @Published var chats: [Chat] = []
+    @Published var userName: String = ""
+    
+    
+    var updateText = ""
     
     @Published var isSending = false
     private var isEOMPending = false
     private var dataToSend: Data?
     private var sendDataIndex = 0
-    
-    private var manager: CBPeripheralManager!
     
     func onAppear() {
         let options: [String: Any] = [:]
@@ -58,8 +83,8 @@ private extension PeripheralViewModel {
             permissions: [.readable, .writeable]
         )
         
-        self.transferCharacteristic = transferCharacteristic
-        self.nameCharacteristic = nameCharacteristic
+        characteristics.transferCharacteristic = transferCharacteristic
+        characteristics.nameCharacteristic = nameCharacteristic
         
         return [transferCharacteristic, nameCharacteristic]
     }
@@ -96,7 +121,7 @@ extension PeripheralViewModel {
 // 데이터를 보내는 메서드
 extension PeripheralViewModel {
     func sendButtonTapped() {
-        guard transferCharacteristic != nil else { return }
+        guard characteristics.transferCharacteristic != nil else { return }
         isSending = true
         
         let data = text.data(using: .utf8)!
@@ -112,7 +137,7 @@ extension PeripheralViewModel {
     // 데이터는 보낼 수 있는 데이터 크기만큼 잘라서 보내는 작업을 무수히 반복해 보냄
     // 이 예시에서는 문장의 끝을 알리기 위해 데이터를 다 보내면 EOM이라는 데이터를 보냄
     private func sendNextChunk() {
-        guard let transferCharacteristic = transferCharacteristic,
+        guard let transferCharacteristic = characteristics.transferCharacteristic,
               let dataToSend,
               isSending
         else {
@@ -157,7 +182,7 @@ extension PeripheralViewModel {
     }
     
     private func sendEOM() {
-        guard let transferCharacteristic = transferCharacteristic else { return }
+        guard let transferCharacteristic = characteristics.transferCharacteristic else { return }
         
         let eomData = "EOM".data(using: .utf8)!
         let didSend = manager.updateValue(
@@ -231,7 +256,7 @@ extension PeripheralViewModel: CBPeripheralManagerDelegate {
     /**
     Central이 특성을 구독했을 때 호출
     - 구독 시 처리 로직을 구현한다.
-    - 이 예시에서는 transferCharacteristic을 구독하여 Central이 Peripheral의 데이터가 update되면 읽음
+    - 이 예시에서는 transferCharacteristic을 구독하여 Central이 Peripheral의 데이터가 update되면 읽음 (name 특성과 상관 없음...)
      */
     func peripheralManager(_ peripheral: CBPeripheralManager, central: CBCentral, didSubscribeTo characteristic: CBCharacteristic) {
         if characteristic.uuid == BLEUUID.transferCharacteristicUUID {
@@ -271,38 +296,35 @@ extension PeripheralViewModel: CBPeripheralManagerDelegate {
     
     // Central으로부터 특성값에 Write된 데이터를 받았을 때
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveWrite requests: [CBATTRequest]) {
-        print("데이터 didReceiveWrite")
         for request in requests {
-
-            if let value = request.value,
-               let stringFromData = String(data: value, encoding: .utf8) {
-                switch request.characteristic.uuid {
-                case BLEUUID.nameCharacteristicUUID:
-                    userName = stringFromData
-                    // nameCharacteristic은 writeWithoutResponse 값을 가지고 있기 때문에 respond를 보낼 필요가 없다.
-                    
-                case BLEUUID.transferCharacteristicUUID:
-                    if stringFromData == "EOM" {
-                        Task { @MainActor in
-                            chats.append(
-                                .init(
-                                    myChat: false,
-                                    userName: userName,
-                                    content: updateText
-                                )
+            guard let value = request.value,
+                  let stringFromData = String(data: value, encoding: .utf8)
+            else { continue }
+            
+            switch request.characteristic.uuid {
+            case BLEUUID.nameCharacteristicUUID:
+                userName = stringFromData
+                // nameCharacteristic은 writeWithoutResponse 값을 가지고 있기 때문에 respond를 보낼 필요가 없다.
+                
+            case BLEUUID.transferCharacteristicUUID:
+                if stringFromData == "EOM" {
+                    Task { @MainActor in
+                        chats.append(
+                            .init(
+                                myChat: false,
+                                content: updateText
                             )
-                            updateText = ""
-                        }
+                        )
+                        updateText = ""
                     }
-                    else {
-                        updateText += stringFromData
-                    }
-                    manager.respond(to: request, withResult: .success)
-
-                default:
-                    fatalError("잘못된 Write한 값이 들어왔어요")
                 }
-                return
+                else {
+                    updateText += stringFromData
+                }
+                manager.respond(to: request, withResult: .success)
+
+            default:
+                fatalError("예상치 못한 Write한 값이 들어왔어요")
             }
         }
     }

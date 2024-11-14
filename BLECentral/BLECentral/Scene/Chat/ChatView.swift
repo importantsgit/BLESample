@@ -47,14 +47,14 @@ struct ChatView<ViewModel: ChatViewModel>: View {
                         LazyVStack(spacing: 16) {
                             if #available(iOS 17.0, *) {
                                 ForEach(viewModel.chats) { chat in
-                                    ChatBubble(chat: chat)
+                                    ChatBubble(userName: $viewModel.userName, chat: chat)
                                 }
                                 .onChange(of: viewModel.chats) { _, newValue in
                                     reader.scrollTo(newValue.last?.id)
                                 }
                             } else {
                                 ForEach(viewModel.chats) { chat in
-                                    ChatBubble(chat: chat)
+                                    ChatBubble(userName: $viewModel.userName, chat: chat)
                                 }
                                 .onChange(of: viewModel.chats) { newValue in
                                     reader.scrollTo(newValue.last?.id, anchor: .bottom)
@@ -115,6 +115,7 @@ struct ChatView<ViewModel: ChatViewModel>: View {
 }
 
 struct ChatBubble: View {
+    @Binding var userName: String
     var chat: Chat
     
     var body: some View {
@@ -134,9 +135,7 @@ struct ChatBubble: View {
                 }
             }
             else {
-                let userName = chat.userName != nil ?
-                (chat.userName!.isEmpty ? "B" : chat.userName!) :
-                "B"
+                let userName = userName.isEmpty ? "B" : userName
                 ZStack(alignment: .center) {
                     Circle()
                         .fill(Color.blue)
@@ -160,7 +159,7 @@ struct ChatBubble: View {
                             .padding(.all)
                             .foregroundColor(.black)
                             .font(.system(size: 16, weight: .medium))
-                            .background(Color.blue.opacity(0.2)) // TODO: 배경색 맞추기
+                            .background(Color.blue.opacity(0.2))
                             .clipShape(BubbleArrow(myMsg: chat.myChat))
                     }
                 }
@@ -193,8 +192,8 @@ struct RoundedShape : Shape {
 
 @available(iOS 17.0, *)
 #Preview {
-    ChatBubble(chat: .init(myChat: true, content: "Hello"))
-    ChatBubble(chat: .init(myChat: false, userName: "Jaehun", content: "Hello"))
-    ChatBubble(chat: .init(myChat: false, userName: "재훈", content: "Hello"))
-    ChatBubble(chat: .init(myChat: false, userName: "sdasdasjbdasdsahljdalhdhalsjdsadlk", content: "Hello"))
+    ChatBubble(userName: .constant("dasd"), chat: .init(myChat: true, content: "Hello"))
+    ChatBubble(userName: .constant("이이"), chat: .init(myChat: false, content: "Hello"))
+    ChatBubble(userName: .constant("Dlww"), chat: .init(myChat: false, content: "Hello"))
+    ChatBubble(userName: .constant("sdlsdl jvjghgjghcfjcjjhf"), chat: .init(myChat: false, content: "Hello"))
 }
