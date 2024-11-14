@@ -57,7 +57,6 @@ struct ChatView<ViewModel: ChatViewModel>: View {
                                     ChatBubble(chat: chat)
                                 }
                                 .onChange(of: viewModel.chats) { newValue in
-                                    // FIXME: 채팅 스크롤 bottom에 맞추기
                                     reader.scrollTo(newValue.last?.id, anchor: .bottom)
                                 }
                             }
@@ -143,7 +142,7 @@ struct ChatBubble: View {
                         .fill(Color.blue)
                         .frame(width: 40, height: 40)
                     
-                    Text(userName.prefix(1))
+                    Text(userName.prefix(1).uppercased())
                         .foregroundColor(.white)
                         .font(.system(size: 16, weight: .bold))
                 }
@@ -154,6 +153,9 @@ struct ChatBubble: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Text(userName)
                             .font(.system(size: 14, weight: .light))
+                            .frame(maxWidth: 100, alignment: .leading)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                         Text(chat.content)
                             .padding(.all)
                             .foregroundColor(.black)
@@ -194,4 +196,5 @@ struct RoundedShape : Shape {
     ChatBubble(chat: .init(myChat: true, content: "Hello"))
     ChatBubble(chat: .init(myChat: false, userName: "Jaehun", content: "Hello"))
     ChatBubble(chat: .init(myChat: false, userName: "재훈", content: "Hello"))
+    ChatBubble(chat: .init(myChat: false, userName: "sdasdasjbdasdsahljdalhdhalsjdsadlk", content: "Hello"))
 }
