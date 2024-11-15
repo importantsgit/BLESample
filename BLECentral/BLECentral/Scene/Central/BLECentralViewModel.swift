@@ -311,6 +311,7 @@ extension BLECentralViewModel: CBPeripheralDelegate {
         }
     }
     
+    // 특성값이 업데이트될 때 호출되는 함수/
     func peripheral(_ peripheral: CBPeripheral,
                     didUpdateValueFor characteristic: CBCharacteristic,
                     error: Error?) {
@@ -349,6 +350,7 @@ extension BLECentralViewModel: CBPeripheralDelegate {
         }
     }
     
+    // 특성값 쓰기 완료 시 호출되는 함수
     func peripheral(_ peripheral: CBPeripheral, didWriteValueFor characteristic: CBCharacteristic, error: (any Error)?) {
         if let error = error {
             print("Failed to send Data, waiting for ready signal \(error)")
@@ -379,6 +381,7 @@ extension BLECentralViewModel: CBPeripheralDelegate {
         }
     }
     
+    // 블루투스 서비스가 수정될 때 호출되는 함수
     func peripheral(_ peripheral: CBPeripheral, didModifyServices invalidatedServices: [CBService]) {
         if invalidatedServices.isEmpty {
             print("연결된 Service가 없습니다.")
