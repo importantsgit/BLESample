@@ -120,6 +120,7 @@ class BLECentralViewModel: NSObject, ChatViewModel {
 
     }
     
+    // 보내기 버튼 클릭 시 이벤트 처리 (초기 설정)
     func sendButtonTapped() {
         guard characteristics.transferCharacteristic != nil else { return }
         let data = text.data(using: .utf8)!
@@ -130,6 +131,7 @@ class BLECentralViewModel: NSObject, ChatViewModel {
         sendNextChunk()
     }
     
+    // 보내는 버튼 클릭 시 / sendNextChunk 내부 / didUpdateValueFor 시 호출
     private func sendNextChunk() {
         guard let transferCharacteristic = characteristics.transferCharacteristic,
               let dataToSend = messageSendingState.dataToSend,
