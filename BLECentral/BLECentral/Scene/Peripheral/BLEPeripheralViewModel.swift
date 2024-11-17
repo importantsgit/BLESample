@@ -29,6 +29,35 @@ class PeripheralViewModel: NSObject, ChatViewModel {
         }
     }
     
+    // 메세지 상태 관련 State
+    private struct MessageSendingState {
+        // 메세지 상태
+        enum SendingState {
+            case idle       // 초기값
+            case sending    // 보내는 중...
+        }
+        
+        var sendingState: SendingState
+        var dataToSend: Data?   // Central에 보내야 할 데이터
+        var sendDataIndex: Int  // Central에 보낸 데이터의 인덱스
+        
+        // 보내야 할 데이터를 다 보냈는지의 대한 여부
+        var isAllDataSent: Bool {
+            guard let dataToSend = dataToSend else { return false }
+            return sendDataIndex >= dataToSend.count
+        }
+        
+        init(
+            sendingState: SendingState = .idle,
+            dataToSend: Data? = nil,
+            sendDataIndex: Int = 0
+        ) {
+            self.sendingState = sendingState
+            self.dataToSend = dataToSend
+            self.sendDataIndex = sendDataIndex
+        }
+    }
+    
     // 주변 장치에서 사용하는 manager
     private var manager: CBPeripheralManager!
     
@@ -44,14 +73,9 @@ class PeripheralViewModel: NSObject, ChatViewModel {
     @Published var text = ""
     @Published var chats: [Chat] = []
     @Published var userName: String = ""
-    
-    
     var updateText = ""
     
-    @Published var isSending = false
-    private var isEOMPending = false
-    private var dataToSend: Data?
-    private var sendDataIndex = 0
+    private var messageSendingState: MessageSendingState = .init()
     
     func onAppear() {
         let options: [String: Any] = [:]
@@ -121,14 +145,15 @@ extension PeripheralViewModel {
 // 데이터를 보내는 메서드
 extension PeripheralViewModel {
     func sendButtonTapped() {
-        guard characteristics.transferCharacteristic != nil else { return }
-        isSending = true
+        guard characteristics.transferCharacteristic != nil,
+              messageSendingState.sendingState == .idle
+        else { return }
+        
         
         let data = text.data(using: .utf8)!
-        dataToSend = data
-        sendDataIndex = 0
-        
-        isEOMPending = false
+        messageSendingState.dataToSend = data
+        messageSendingState.sendDataIndex = 0
+        messageSendingState.sendingState = .sending
         
         // 데이터 보내기
         sendNextChunk()
@@ -138,24 +163,24 @@ extension PeripheralViewModel {
     // 이 예시에서는 문장의 끝을 알리기 위해 데이터를 다 보내면 EOM이라는 데이터를 보냄
     private func sendNextChunk() {
         guard let transferCharacteristic = characteristics.transferCharacteristic,
-              let dataToSend,
-              isSending
+              let dataToSend = messageSendingState.dataToSend,
+              messageSendingState.sendingState == .sending
         else {
             resetValue()
             return
         }
         
-        if isEOMPending {
+        if messageSendingState.isAllDataSent {
             sendEOM()
             return
         }
         
-        var amountToSend = dataToSend.count - sendDataIndex
+        var amountToSend = dataToSend.count - messageSendingState.sendDataIndex
         if let mtu = connectedCentral?.maximumUpdateValueLength {
             amountToSend = min(amountToSend, mtu)
         }
         
-        let chunk = dataToSend.subdata(in: sendDataIndex..<(sendDataIndex + amountToSend))
+        let chunk = dataToSend.subdata(in: messageSendingState.sendDataIndex..<(messageSendingState.sendDataIndex + amountToSend))
         
         let didSend = manager.updateValue(
             chunk,
@@ -164,12 +189,11 @@ extension PeripheralViewModel {
         )
         
         if didSend {
-            sendDataIndex += amountToSend
+            messageSendingState.sendDataIndex += amountToSend
             
-            print(sendDataIndex, dataToSend.count)
-            if sendDataIndex >= dataToSend.count {
+            print(messageSendingState.sendDataIndex, dataToSend.count)
+            if messageSendingState.isAllDataSent {
                 // 모든 데이터를 보냈으므로 다음에 EOM을 전송
-                isEOMPending = true
                 sendEOM()
             }
             else {
@@ -205,10 +229,9 @@ extension PeripheralViewModel {
     func resetValue() {
         print("resetValue")
         Task { @MainActor in
-            isSending = false
-            isEOMPending = false
-            dataToSend = nil
-            sendDataIndex = 0
+            messageSendingState.sendingState = .idle
+            messageSendingState.dataToSend = nil
+            messageSendingState.sendDataIndex = 0
             updateText = ""
             text = ""
         }
@@ -289,7 +312,7 @@ extension PeripheralViewModel: CBPeripheralManagerDelegate {
       이전 전송이 완료되지 않아 실패한 update들은 이 메서드가 호출된 후 재시도할 수 있음
     */
     func peripheralManagerIsReady(toUpdateSubscribers peripheral: CBPeripheralManager) {
-        if isSending {
+        if messageSendingState.sendingState == .sending {
             sendNextChunk()
         }
     }
