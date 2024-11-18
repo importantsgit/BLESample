@@ -41,7 +41,7 @@ struct PeripheralView: View {
                 .frame(width: 48)
             } rightView: {
                 Button(viewModel.isAdvertising ? "광고 중지" : "광고 시작") {
-                    viewModel.toogleAdvertising()
+                    viewModel.handleAction(.advertisingBtnTapped)
                 }
             }
             
@@ -72,7 +72,7 @@ struct PeripheralView: View {
             }
         }
         .onAppear {
-            viewModel.onAppear()
+            viewModel.handleAction(.onAppear)
         }
         .fullScreenCover(isPresented: $viewModel.isConnected) {
             ChatView(viewModel: viewModel)

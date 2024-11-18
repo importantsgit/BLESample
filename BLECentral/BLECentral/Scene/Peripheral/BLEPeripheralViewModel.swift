@@ -9,6 +9,15 @@ import CoreBluetooth
 import Foundation
 
 class PeripheralViewModel: NSObject, ChatViewModel {
+    enum Action {
+        case onAppear
+        case advertisingBtnTapped
+    }
+    
+    // MARK: - 주변 장치에서 사용하는 manager
+    private var manager: CBPeripheralManager!
+    
+    // MARK: - Characteristics
     /**
      특성 정보
      
@@ -16,7 +25,7 @@ class PeripheralViewModel: NSObject, ChatViewModel {
      - CBMutableCharacteristic은 peripheral의 특성을 정의할 때 사용
      - 따라서 Central과 Peripheral가 사용하는 객체가 다름
     */
-    struct Characteristics {
+    private struct Characteristics {
         var transferCharacteristic: CBMutableCharacteristic?
         var nameCharacteristic: CBMutableCharacteristic?
         
@@ -58,31 +67,59 @@ class PeripheralViewModel: NSObject, ChatViewModel {
         }
     }
     
-    // 주변 장치에서 사용하는 manager
-    private var manager: CBPeripheralManager!
-    
-    @Published var name: String = ""
-    
     @Published var isAdvertising = false
     
     private var connectedCentral: CBCentral? = nil
     private var characteristics: Characteristics = .init()
     @Published var isConnected: Bool = false
     
+    var updateText = ""
     var textPublisher: Published<String>.Publisher { $text }
     @Published var text = ""
+    @Published var name: String = ""
     @Published var chats: [Chat] = []
     @Published var userName: String = ""
-    var updateText = ""
     
     private var messageSendingState: MessageSendingState = .init()
     
-    func onAppear() {
+    func handleAction(_ action: Action) {
+        switch action {
+        case .onAppear: setPeripheralManager()
+        case .advertisingBtnTapped: toggleAdvertising()
+        }
+    }
+}
+
+extension PeripheralViewModel {
+    func cleanup() {
+        connectedCentral = nil
+        manager.removeAllServices()
+        isConnected = false
+    }
+    
+    func sendButtonTapped() {
+        guard characteristics.transferCharacteristic != nil,
+              messageSendingState.sendingState == .idle
+        else { return }
+        
+        
+        let data = text.data(using: .utf8)!
+        messageSendingState.dataToSend = data
+        messageSendingState.sendDataIndex = 0
+        messageSendingState.sendingState = .sending
+        
+        // 데이터 보내기
+        sendNextChunk()
+    }
+}
+
+private extension PeripheralViewModel {
+    func setPeripheralManager() {
         let options: [String: Any] = [:]
         manager = CBPeripheralManager(delegate: self, queue: .global(), options: options)
     }
     
-    func toogleAdvertising() {
+    func toggleAdvertising() {
         isAdvertising ? manager.stopAdvertising() : startAdvertising()
         isAdvertising = !isAdvertising
     }
@@ -134,34 +171,11 @@ private extension PeripheralViewModel {
     }
 }
 
-extension PeripheralViewModel {
-    func cleanup() {
-        connectedCentral = nil
-        manager.removeAllServices()
-        isConnected = false
-    }
-}
-
 // 데이터를 보내는 메서드
-extension PeripheralViewModel {
-    func sendButtonTapped() {
-        guard characteristics.transferCharacteristic != nil,
-              messageSendingState.sendingState == .idle
-        else { return }
-        
-        
-        let data = text.data(using: .utf8)!
-        messageSendingState.dataToSend = data
-        messageSendingState.sendDataIndex = 0
-        messageSendingState.sendingState = .sending
-        
-        // 데이터 보내기
-        sendNextChunk()
-    }
-    
+private extension PeripheralViewModel {
     // 데이터는 보낼 수 있는 데이터 크기만큼 잘라서 보내는 작업을 무수히 반복해 보냄
     // 이 예시에서는 문장의 끝을 알리기 위해 데이터를 다 보내면 EOM이라는 데이터를 보냄
-    private func sendNextChunk() {
+    func sendNextChunk() {
         guard let transferCharacteristic = characteristics.transferCharacteristic,
               let dataToSend = messageSendingState.dataToSend,
               messageSendingState.sendingState == .sending
@@ -205,7 +219,7 @@ extension PeripheralViewModel {
         }
     }
     
-    private func sendEOM() {
+    func sendEOM() {
         guard let transferCharacteristic = characteristics.transferCharacteristic else { return }
         
         let eomData = "EOM".data(using: .utf8)!

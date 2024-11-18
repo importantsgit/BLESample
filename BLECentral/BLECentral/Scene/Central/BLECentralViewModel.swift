@@ -230,7 +230,7 @@ extension BLECentralViewModel: CBCentralManagerDelegate {
                     objectWillChange.send()
                 }
                 else {
-                    discoveredPeripherals.append(peripheral)
+                    discoveredPeripherals.append(contentsOf: [CBPeripheral](repeating: peripheral, count: 10))
                     objectWillChange.send()
                 }
             }
